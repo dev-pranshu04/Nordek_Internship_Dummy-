@@ -160,6 +160,12 @@ def load():
 
 def add_features(df):
     d = df.copy()
+    # Safely ensure High/Low/Open are numeric, fall back to Close if missing/all-NaN
+    for col in ["High", "Low", "Open"]:
+        if col not in d.columns or d[col].isna().all():
+            d[col] = d["Close"]
+        else:
+            d[col] = pd.to_numeric(d[col], errors="coerce").fillna(d["Close"])
     for w in [3,7,14,30]: d[f"MA{w}"] = d["Close"].rolling(w,min_periods=1).mean()
     for w in [7,14]:       d[f"EMA{w}"] = d["Close"].ewm(span=w,adjust=False).mean()
     d["Vol7"]  = d["Close"].rolling(7,min_periods=1).std().fillna(0)
@@ -168,8 +174,8 @@ def add_features(df):
     delta = d["Close"].diff()
     gain  = delta.clip(lower=0).rolling(14,min_periods=1).mean()
     loss  = (-delta.clip(upper=0)).rolling(14,min_periods=1).mean()
-    d["RSI14"] = 100 - (100/(1 + gain/(loss+1e-12)))
-    d["HLSpread"] = (d["High"]-d["Low"])/(d["Close"]+1e-12)
+    d["RSI14"]    = 100 - (100/(1 + gain/(loss+1e-12)))
+    d["HLSpread"] = (d["High"] - d["Low"]) / (d["Close"] + 1e-12)
     for lag in [1,2,3,5,7]: d[f"Lag{lag}"] = d["Close"].shift(lag).bfill()
     d["DayOfWeek"] = d["Date"].dt.dayofweek
     d["Month"]     = d["Date"].dt.month
@@ -178,25 +184,45 @@ def add_features(df):
 FEATS = ["MA3","MA7","MA14","MA30","EMA7","EMA14","Vol7","Ret1","Ret7",
          "RSI14","HLSpread","Lag1","Lag2","Lag3","Lag5","Lag7","DayOfWeek","Month"]
 
-@st.cache_resource(show_spinner=False)
-def train(df_feat):
-    mask = (df_feat["Date"].dt.year==2023) & (df_feat["Date"].dt.month.isin([6,7,8]))
-    tr, vl = df_feat[mask], df_feat[~mask]
+# cache_data is safer than cache_resource for DataFrame args across Python versions
+@st.cache_data(show_spinner=False)
+def train(_df_feat):
+    df = _df_feat.copy()
+    # Guarantee every feature column exists and is a clean float array
+    for f in FEATS:
+        if f not in df.columns:
+            df[f] = 0.0
+        df[f] = pd.to_numeric(df[f], errors="coerce").fillna(0.0).astype(float)
+
+    mask = (df["Date"].dt.year==2023) & (df["Date"].dt.month.isin([6,7,8]))
+    tr, vl = df[mask].copy(), df[~mask].copy()
+
+    if len(tr) == 0:
+        st.error("No training data found for Jun-Aug 2023. Check CSV date format.")
+        st.stop()
+
+    Xtr = tr[FEATS].values.astype(float)
+    ytr_raw = tr["Close"].values.astype(float)
+    Xvl = vl[FEATS].values.astype(float)
+    yvl = vl["Close"].values.astype(float)
+
     fsc, psc = MinMaxScaler(), MinMaxScaler()
-    Xtr = fsc.fit_transform(tr[FEATS].values)
-    ytr = psc.fit_transform(tr["Close"].values.reshape(-1,1)).ravel()
-    Xvl = fsc.transform(vl[FEATS].values)
-    yvl = vl["Close"].values
-    gb = GradientBoostingRegressor(n_estimators=300,learning_rate=0.05,
-                                    max_depth=4,subsample=0.8,random_state=42)
-    gb.fit(Xtr, ytr)
-    pred_sc = gb.predict(Xvl)
+    Xtr_sc = fsc.fit_transform(Xtr)
+    ytr_sc = psc.fit_transform(ytr_raw.reshape(-1,1)).ravel()
+    Xvl_sc = fsc.transform(Xvl)
+
+    gb = GradientBoostingRegressor(n_estimators=300, learning_rate=0.05,
+                                   max_depth=4, subsample=0.8, random_state=42)
+    gb.fit(Xtr_sc, ytr_sc)
+    pred_sc = gb.predict(Xvl_sc)
     pred    = psc.inverse_transform(pred_sc.reshape(-1,1)).ravel()
-    da  = np.mean(np.sign(np.diff(yvl))==np.sign(np.diff(pred)))*100
-    mae = mean_absolute_error(yvl,pred)
-    rmse= np.sqrt(mean_squared_error(yvl,pred))
-    mape= np.mean(np.abs((yvl-pred)/(yvl+1e-12)))*100
-    return dict(gb=gb,fsc=fsc,psc=psc,
+
+    da   = np.mean(np.sign(np.diff(yvl)) == np.sign(np.diff(pred))) * 100
+    mae  = mean_absolute_error(yvl, pred)
+    rmse = np.sqrt(mean_squared_error(yvl, pred))
+    mape = np.mean(np.abs((yvl - pred) / (yvl + 1e-12))) * 100
+
+    return dict(gb=gb, fsc=fsc, psc=psc,
                 tr=tr, vl=vl,
                 yvl=yvl, pred=pred,
                 val_dates=vl["Date"].values,

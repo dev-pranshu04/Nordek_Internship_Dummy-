@@ -186,24 +186,7 @@ def get_logo_b64(path="nordek_logo.png"):
             return base64.b64encode(f.read()).decode()
     return None
 
-logo_b64 = get_logo_b64()
-logo_html = (
-    f'<img src="data:image/png;base64,{logo_b64}" style="height:60px;border-radius:8px;" />'
-    if logo_b64 else
-    '<div style="font-family:Space Mono,monospace;font-size:1.5rem;font-weight:700;'
-    'background:linear-gradient(90deg,#5b8dee,#4fd1c5);-webkit-background-clip:text;'
-    '-webkit-text-fill-color:transparent;">◈ NORDEK</div>'
-)
-
-st.markdown(f"""
-<div class="nordek-header">
-    {logo_html}
-    <div>
-        <p class="nordek-title">NRK · Price Intelligence</p>
-        <p class="nordek-subtitle">LSTM + XGBoost · Internship Analytics · June – August 2023</p>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+st.image("nordek_logo.png", width=60)  # no base64 needed
 
 
 # ─────────────────────────────────────────────────────────────────────

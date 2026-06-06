@@ -501,7 +501,7 @@ if page == "My Work at Nordek":
         <div class="intern-badge">INTERNSHIP<br/>NORDEK<br/>2023</div>
         <div>
             <p style='font-family:IBM Plex Mono,monospace;font-size:16px;font-weight:700;
-                      color:{TEXT};margin:0 0 4px 0;'>Data Science Intern</p>
+                      color:{TEXT};margin:0 0 4px 0;'>Applied Machine Learning Intern </p>
             <p style='font-size:13px;color:{CYAN};margin:0 0 6px 0;
                       font-family:IBM Plex Mono,monospace;'>
                 June – August 2023 &nbsp;·&nbsp; 3 months &nbsp;·&nbsp; Blockchain / DeFi
